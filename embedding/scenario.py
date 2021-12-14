@@ -9,12 +9,9 @@ import pprint
 from embedding.utils import ProgressBar
 from embedding.parameters import *
 
-
 bar = ProgressBar()
-para = Parameter()
 
-
-def generate_scenario():
+def generate_scenario(server_num, density, bw_lower, bw_upper, pp_lower, pp_upper, com_lower, com_upper):
     """
     Generate the edge computing scenario, i.e., generate a connected graph of edge servers,
     including the
@@ -24,35 +21,35 @@ def generate_scenario():
     """
     # step 1: generate a connected graph
     # initialize
-    G = np.zeros((para.get_server_num(), para.get_server_num()))
-    D = np.ones((para.get_server_num(), para.get_server_num())) * MAX_VALUE
+    G = np.zeros((server_num, server_num))
+    D = np.ones((server_num, server_num)) * MAX_VALUE
 
     is_connected = False
-    for i in range(para.get_server_num()):
+    for i in range(server_num):
         G[i, i] = 1
         D[i, i] = 0
 
     while not is_connected:
-        for i in range(para.get_server_num()):
+        for i in range(server_num):
             # randomly connect i and at most 'DENSITY' other servers
-            conn_node_num = random.randint(0, para.get_density())
+            conn_node_num = random.randint(0, density)
             for j in range(conn_node_num):
-                k = random.randint(0, para.get_server_num() - 1)
+                k = random.randint(0, server_num - 1)
                 G[i, k], G[k, i] = 1, 1
 
-        for i in range(para.get_server_num()):
-            for j in range(para.get_server_num()):
+        for i in range(server_num):
+            for j in range(server_num):
                 if G[i, j] == 1:
                     D[i, j], D[j, i] = 1, 1
-        for i in range(para.get_server_num()):
-            for j in range(para.get_server_num()):
-                for k in range(para.get_server_num()):
+        for i in range(server_num):
+            for j in range(server_num):
+                for k in range(server_num):
                     if D[j, k] > D[j, i] + D[i, k]:
                         D[j, k] = D[j, i] + D[i, k]
 
         is_continue = False
-        for i in range(para.get_server_num()):
-            for j in range(para.get_server_num()):
+        for i in range(server_num):
+            for j in range(server_num):
                 if D[i, j] == MAX_VALUE:
                     # the graph is not a connected graph
                     is_continue = True
@@ -62,19 +59,22 @@ def generate_scenario():
 
 
     # step 2: set the bandwidth
-    bw = np.ones((para.get_server_num(), para.get_server_num())) * -1
-    for i in range(para.get_server_num()):
+    bw = np.ones((server_num, server_num)) * -1
+    for i in range(server_num):
         j = 0
         while j < i:
             if G[i, j] == 1:
-                b = random.randint(para.get_bw_lower(), para.get_bw_upper())
+                b = random.randint(bw_lower, bw_upper)
                 bw[i, j], bw[j, i] = b, b
             j = j + 1
 
     # step 3: set the processing power
-    pp = np.random.randint(para.get_pp_lower(), para.get_pp_upper(), (para.get_server_num()))
+    pp = np.random.randint(pp_lower, pp_upper, server_num)
 
-    return G, bw, pp
+    # step 4: set the computation ability
+    com_ability = np.random.randint(com_lower, com_upper, server_num)
+
+    return G, bw, pp, com_ability
 
 
 def print_scenario(G, bw, pp):
@@ -86,7 +86,7 @@ def print_scenario(G, bw, pp):
     pprint.pprint(pp)
 
 
-def go_forward(node, node_dst, paths_ij, path_ij, path_nodes_ij, G):
+def go_forward(node, node_dst, paths_ij, path_ij, path_nodes_ij, G, server_num):
     """
     The recursive algorithm (OSM) to find all the simple paths between any two node i and j.
     """
@@ -97,26 +97,26 @@ def go_forward(node, node_dst, paths_ij, path_ij, path_nodes_ij, G):
     else:
         path_ij.append(node)
         path_nodes_ij.add(node)
-        for i in range(para.get_server_num()):
+        for i in range(server_num):
             if G[node][i] and (i not in path_nodes_ij):
-                go_forward(i, node_dst, paths_ij, path_ij, path_nodes_ij, G)
+                go_forward(i, node_dst, paths_ij, path_ij, path_nodes_ij, G, server_num)
         path_ij.pop()
         path_nodes_ij.discard(node)
 
 
-def get_simple_paths(G):
+def get_simple_paths(G, server_num):
     """
     Get all the simple paths between any two edge servers. Call the subroutine go_forward().
     """
     simple_paths = []
-    for i in range(para.get_server_num()):
+    for i in range(server_num):
         paths_from_i = []
-        for j in range(para.get_server_num()):
+        for j in range(server_num):
             node = i
             node_dst = j
             paths_ij, path_ij = [], []
             path_nodes_ij = set()
-            go_forward(node, node_dst, paths_ij, path_ij, path_nodes_ij, G)
+            go_forward(node, node_dst, paths_ij, path_ij, path_nodes_ij, G, server_num)
             paths_from_i.append(paths_ij)
         simple_paths.append(paths_from_i)
     return simple_paths
@@ -135,7 +135,7 @@ def print_simple_path(simple_paths, i, j):
     pprint.pprint(simple_paths[j][i])
 
 
-def get_ratio(simple_paths, bw):
+def get_ratio(simple_paths, bw, server_num):
     """
     Calculate the sum of the reciprocal of bandwidth of each link for every simple path.
     Then, get the proportion of data stream size which routes through the first simple path between any two nodes.
@@ -144,10 +144,10 @@ def get_ratio(simple_paths, bw):
     reciprocals_list = []
     proportions_list = []
 
-    for i in range(para.get_server_num()):
+    for i in range(server_num):
         reciprocals = []
         proportions = []
-        for j in range(para.get_server_num()):
+        for j in range(server_num):
             paths = simple_paths[i][j]
             paths_len = len(paths)
             reciprocal_sum_list = []
@@ -172,18 +172,24 @@ def get_ratio(simple_paths, bw):
     return reciprocals_list, proportions_list
 
 
-def set_funcs():
+def set_funcs(pp_required_lower, pp_required_upper, stream_size_lower, stream_size_upper, 
+            mem_requied_lower, mem_required_upper, max_func_num):
     """
     Set the processing power required and the output data stream size of functions.
     The two variables are reused for all DAGs (yes I am lazy :-)).
     """
     # set the processing power required
     pp_required = np.random.randint(
-        para.get_pp_required_lower(),
-        para.get_pp_required_upper(),
-        (para.get_max_func_num()))
+        pp_required_lower,
+        pp_required_upper,
+        max_func_num)
     data_stream = np.random.randint(
-        para.get_data_stream_size_lower(),
-        para.get_data_stream_size_upper(),
-        (para.get_max_func_num()))
-    return pp_required, data_stream
+        stream_size_lower,
+        stream_size_upper,
+        max_func_num)
+    mem_required = np.random.randint(
+        mem_requied_lower,
+        mem_required_upper, 
+        max_func_num
+    )
+    return pp_required, data_stream, mem_required

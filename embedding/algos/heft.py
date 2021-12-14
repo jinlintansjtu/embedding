@@ -11,27 +11,26 @@ import random
 from collections import namedtuple
 from functools import partial
 from itertools import chain
-from embedding.scenario import bar, para
+from embedding.scenario import bar
 from embedding.utils import reverse_dict
 from embedding.parameters import *
 
 
-def get_agents():
+def get_agents(server_num):
     """
     Agents start from zero.
     """
-    servers = [str(n) for n in range(para.get_server_num())]
+    servers = [str(n) for n in range(server_num)]
     return ''.join(servers)
 
 
-all_agents = get_agents()
 Event = namedtuple('Event', 'job start end')
 
-
 class HEFT:
-    def __init__(self, G, bw, pp, simple_paths, reciprocals_list, proportions_list, pp_required, data_stream):
+    def __init__(self, G, bw, pp, simple_paths, reciprocals_list, proportions_list, pp_required, data_stream, para):
         # get the generated edge computing scenario
         self.G, self.bw, self.pp = G, bw, pp
+        self.para = para
         self.simple_paths, self.reciprocals_list, self.proportions_list = simple_paths, reciprocals_list, proportions_list
         # get the generated functions' requirements
         self.pp_required, self.data_stream = pp_required, data_stream
@@ -73,9 +72,12 @@ class HEFT:
             comm_cost_array = self.get_comm_cost(succ, DAG_data_stream)
 
             # schedule for this DAG
+            all_agents = get_agents(self.para.get_server_num())
             orders, jobson, makespan = HEFT.schedule(succ, all_agents,
                                                      HEFT.compcost, comp_cost_array,
-                                                     HEFT.commcost, comm_cost_array)
+                                                     HEFT.commcost, comm_cost_array,
+                                                     self.para.get_server_num(),
+                                                     self.para.get_n_pairs())
 
             makespan_of_all_DAGs += makespan
             DAGs_deploy.append(jobson)
@@ -163,7 +165,7 @@ class HEFT:
         """
         Get computation cost of each function on each server for a given DAG.
         """
-        comp_cost_array = np.zeros((len(funcs_num) + 1, para.get_server_num()))
+        comp_cost_array = np.zeros((len(funcs_num) + 1, self.para.get_server_num()))
         for i in range(len(funcs_num)):
             func_num = funcs_num[i]
             comp_cost_array[func_num] = DAG_pp_required[func_num - 1] / self.pp
@@ -186,9 +188,9 @@ class HEFT:
         Get the data transmission cost between any two servers for a given DAG.
         """
         # fix the path chosen between any two node
-        fix_path_reciprocals = np.zeros((para.get_server_num(), para.get_server_num()))
-        for n1 in range(para.get_server_num()):
-            for n2 in range(para.get_server_num()):
+        fix_path_reciprocals = np.zeros((self.para.get_server_num(), self.para.get_server_num()))
+        for n1 in range(self.para.get_server_num()):
+            for n2 in range(self.para.get_server_num()):
                 if n1 != n2:
                     paths_num = len(self.reciprocals_list[n1][n2])
                     chosen_path = random.randint(0, paths_num - 1)
@@ -200,9 +202,9 @@ class HEFT:
                 pass
             else:
                 trans_size = DAG_data_stream[dependent_func_num - 1]
-                trans_cost = np.zeros((para.get_server_num(), para.get_server_num()))
-                for n1 in range(para.get_server_num()):
-                    for n2 in range(para.get_server_num()):
+                trans_cost = np.zeros((self.para.get_server_num(), self.para.get_server_num()))
+                for n1 in range(self.para.get_server_num()):
+                    for n2 in range(self.para.get_server_num()):
                         if n1 != n2:
                             trans_cost[n1][n2] = trans_size * fix_path_reciprocals[n1][n2]
                 comm_cost_array.append([dependent_func_num, funcs_num, trans_cost])
@@ -225,28 +227,27 @@ class HEFT:
         return 0.
 
     @staticmethod
-    def cbar(ni, nj, agents, commcost, comm_cost_array):
+    def cbar(ni, nj, agents, commcost, comm_cost_array, n_pairs):
         """
         Average communication cost.
         """
         n = len(agents)
         if n == 1:
             return 0
-        n_pairs = para.get_n_pairs()
         return 1. * sum(commcost(ni, nj, a1, a2, comm_cost_array) for a1 in agents for a2 in agents
                         if a1 != a2) / n_pairs
 
     @staticmethod
-    def ranku(ni, agents, succ, compcost, commcost, comp_cost_array, comm_cost_array):
+    def ranku(ni, agents, succ, compcost, commcost, comp_cost_array, comm_cost_array, n_pairs):
         """
         Rank of job.
         This code is designed to mirror the wikipedia entry.
         Please see https://en.wikipedia.org/wiki/Heterogeneous_Earliest_Finish_Time for details.
         """
-        rank = partial(HEFT.ranku, compcost=compcost, commcost=commcost,
-                       succ=succ, agents=agents, comp_cost_array=comp_cost_array, comm_cost_array=comm_cost_array)
+        rank = partial(HEFT.ranku, compcost=compcost, commcost=commcost, succ=succ, 
+                    agents=agents, comp_cost_array=comp_cost_array, comm_cost_array=comm_cost_array, n_pairs = n_pairs)
         w = partial(HEFT.wbar, agents=agents, compcost=compcost, comp_cost_array=comp_cost_array)
-        c = partial(HEFT.cbar, agents=agents, commcost=commcost, comm_cost_array=comm_cost_array)
+        c = partial(HEFT.cbar, agents=agents, commcost=commcost, comm_cost_array=comm_cost_array, n_pairs = n_pairs)
 
         if ni in succ and succ[ni]:
             return w(ni) + max(c(ni, nj) + rank(nj) for nj in succ[ni])
@@ -329,7 +330,7 @@ class HEFT:
         return max(v[-1].end for v in orders.values() if v)
 
     @staticmethod
-    def schedule(succ, agents, compcost, comp_cost_array, commcost, comm_cost_array):
+    def schedule(succ, agents, compcost, comp_cost_array, commcost, comm_cost_array, server_num, n_pairs):
         """
         Schedule computation dag onto worker agents.
         inputs:
@@ -340,7 +341,8 @@ class HEFT:
         """
         rank = partial(HEFT.ranku, agents=agents, succ=succ,
                        compcost=compcost, comp_cost_array=comp_cost_array,
-                       commcost=commcost, comm_cost_array=comm_cost_array)
+                       commcost=commcost, comm_cost_array=comm_cost_array,
+                       n_pairs = n_pairs)
         prec = reverse_dict(succ)
 
         jobs = set(succ.keys()) | set(x for xx in succ.values() for x in xx)
@@ -351,7 +353,7 @@ class HEFT:
         for job in reversed(jobs):
             HEFT.allocate(job, orders, jobson, prec, commcost, comm_cost_array, compcost, comp_cost_array)
 
-        for n in range(para.get_server_num()):
+        for n in range(server_num):
             orders['server ' + str(n + 1)] = orders.pop(str(n))
 
         return orders, jobson, HEFT.makespan(orders)

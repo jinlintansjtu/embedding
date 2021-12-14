@@ -13,24 +13,24 @@ SORTED_DAG_PATH = os.path.join(DIR_PATH, 'dataset/topological_order.csv')
 TEST_DAG_PATH = os.path.join(DIR_PATH, 'dataset/test.csv')
 
 MAX_VALUE = 9e+4
-REQUIRED_NUM = [200, 800, 600, 400, 119]
+REQUIRED_NUM = [800, 800, 800, 800, 800]
 MAX_FUNC_NUM = 250
 
 
 class Parameter:
-    def __init__(self):
+    def __init__(self, server_num, density, bw_lower, bw_upper, pp_lower, pp_upper, pp_required_lower, pp_required_upper):
         # edge computing environment settings
-        self.__server_num = 4
+        self.__server_num = server_num
         self.__n_pairs = self.__server_num * (self.__server_num - 1)
         # density is used to adjust the connectivity of the graph
-        self.__density = 10
+        self.__density = density
         # bandwidth generation scope
-        self.__bw_lower, self.__bw_upper = 30, 70
+        self.__bw_lower, self.__bw_upper = bw_lower, bw_upper
         # processing power scope
-        self.__pp_lower, self.__pp_upper = 7, 14
+        self.__pp_lower, self.__pp_upper = pp_lower, pp_upper
 
         # DAG settings (processing power required by each function, the data stream size of each link)
-        self.__pp_required_lower, self.__pp_required_upper = 1, 2
+        self.__pp_required_lower, self.__pp_required_upper = pp_required_lower, pp_required_upper
         self.__data_stream_size_lower, self.__data_stream_size_upper = 1, 10
         self.__max_func_num = MAX_FUNC_NUM
 
@@ -103,3 +103,63 @@ class Parameter:
 
     def get_data_stream_size_upper(self):
         return self.__data_stream_size_upper
+
+    def get_ll_bw_lower(self):
+        return self.__bw_lower
+
+    def get_ll_bw_upper(self):
+        return self.__bw_lower + (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_lower_bw_lower(self):
+        return self.__bw_lower + (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_lower_bw_upper(self):
+        return self.__bw_lower + 2 * (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_middle_bw_lower(self):
+        return self.__bw_lower + 2 * (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_middle_bw_upper(self):
+        return self.__bw_lower + 3 * (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_upper_bw_lower(self):
+        return self.__bw_lower + 3 * (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_upper_bw_upper(self):
+        return self.__bw_lower + 4 * (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_uu_bw_lower(self):
+        return self.__bw_lower + 4 * (self.__bw_upper - self.__bw_lower) / 5
+
+    def get_uu_bw_upper(self):
+        return self.__bw_upper
+
+    def get_ll_pp_lower(self):
+        return self.__pp_lower
+
+    def get_ll_pp_upper(self):
+        return self.__pp_lower + (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_lower_pp_lower(self):
+        return self.__pp_lower + (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_lower_pp_upper(self):
+        return self.__pp_lower + 2 * (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_middle_pp_lower(self):
+        return self.__pp_lower + 2 * (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_middle_pp_upper(self):
+        return self.__pp_lower + 3 * (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_upper_pp_lower(self):
+        return self.__pp_lower + 3 * (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_upper_pp_upper(self):
+        return self.__pp_lower + 4 * (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_uu_pp_lower(self):
+        return self.__pp_lower + 4 * (self.__pp_upper - self.__pp_lower) / 5
+
+    def get_uu_pp_upper(self):
+        return self.__bw_upper

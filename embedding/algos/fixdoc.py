@@ -6,18 +6,19 @@ import numpy as np
 import pandas as pd
 import random
 from embedding.parameters import *
-from embedding.scenario import bar, para
+from embedding.scenario import bar
 
 
 class FixDoc:
-    def __init__(self, G, bw, pp, simple_paths, reciprocals_list, proportions_list, pp_required, data_stream):
+    def __init__(self, G, bw, pp, simple_paths, reciprocals_list, proportions_list, pp_required, data_stream, para):
         # get the generated edge computing scenario
         self.G, self.bw, self.pp = G, bw, pp
+        self.para = para
         self.simple_paths, self.reciprocals_list, self.proportions_list = simple_paths, reciprocals_list, proportions_list
         # get the generated functions' requirements
         self.pp_required, self.data_stream = pp_required, data_stream
 
-    def get_response_time(self, sorted_DAG_path=SORTED_DAG_PATH):
+    def get_response_time(self, sorted_DAG_path=SORTED_DAG_PATH, makespan_of_all_DAGs=0):
         """
         Calculate the overall finish time of all DAGs achieved by FixDoc algorithm.
         In FixDoc paper, the authors claim that a function might be executed repeatedly on multiple servers.
@@ -40,7 +41,6 @@ class FixDoc:
         df_len = df.shape[0]
         idx = 0
 
-        makespan_of_all_DAGs = 0
         DAGs_deploy = []
         T_optimal_all = []
         start_time_all = []
@@ -60,19 +60,22 @@ class FixDoc:
             DAG_pp_required = self.pp_required[:DAG_len]
             DAG_data_stream = self.data_stream[:DAG_len]
 
+            # Caclulate the complexity of DAG and find the corresponding sub-toplogies
+            
+
             # T_optimal stores the earliest finish time of each function on each server
             # (if the server n for func i is not idle when making decisions, T_optimal[i][n] is set as MAX_VALUE)
-            T_optimal = np.zeros((DAG_len, para.get_server_num()))
+            T_optimal = np.zeros((DAG_len, self.para.get_server_num()))
             start_time = np.zeros(DAG_len)
             funcs_deploy = -1 * np.ones(DAG_len)
             process_sequence = []
             # server_runtime records the moment when the newest func on each server is finished
-            server_runtime = np.zeros(para.get_server_num())
+            server_runtime = np.zeros(self.para.get_server_num())
 
             # fix the path chosen between any two node
-            fix_path_reciprocals = np.zeros((para.get_server_num(), para.get_server_num()))
-            for n1 in range(para.get_server_num()):
-                for n2 in range(para.get_server_num()):
+            fix_path_reciprocals = np.zeros((self.para.get_server_num(), self.para.get_server_num()))
+            for n1 in range(self.para.get_server_num()):
+                for n2 in range(self.para.get_server_num()):
                     if n1 != n2:
                         paths_num = len(self.reciprocals_list[n1][n2])
                         chosen_path = random.randint(0, paths_num - 1)
@@ -102,7 +105,7 @@ class FixDoc:
                 else:
                     # func is not an entry function, func has dependencies
                     # enumerate the deployment of func
-                    for n in range(para.get_server_num()):
+                    for n in range(self.para.get_server_num()):
                         # get t(p(f_j)) where p(f_j) is n
                         process_cost = DAG_pp_required[func_num - 1] / self.pp[n]
                         all_min_phi = []
@@ -144,8 +147,8 @@ class FixDoc:
                                     else:
                                         # although T_optimal of dependent_func_num has been set, but it has to be
                                         # updated because server_runtime may changed!!!
-                                        process_begin_time = np.zeros(para.get_server_num())
-                                        for k in range(para.get_server_num()):
+                                        process_begin_time = np.zeros(self.para.get_server_num())
+                                        for k in range(self.para.get_server_num()):
                                             min_process_begin_time = 0
                                             # dependent_func_num is deployed on k
                                             for h_inner in range(name_str_list_inner_len - 1):
@@ -179,7 +182,7 @@ class FixDoc:
                             # decide the optimal deployment for dependent_func_num
                             min_phi = MAX_VALUE
                             selected_server = -1
-                            for m in range(para.get_server_num()):
+                            for m in range(self.para.get_server_num()):
                                 if n == m:
                                     trans_cost = 0
                                 else:
@@ -217,4 +220,4 @@ class FixDoc:
             idx += DAG_len
         print('The overall makespan achieved by FixDoc: %f second' % makespan_of_all_DAGs)
         print('The average makespan: %f second' % (makespan_of_all_DAGs / sum(REQUIRED_NUM)))
-        return T_optimal_all, DAGs_deploy, process_sequence_all, start_time_all
+        return T_optimal_all, DAGs_deploy, process_sequence_all, start_time_all, makespan_of_all_DAGs
